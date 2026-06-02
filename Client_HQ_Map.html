@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client HQ Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #0f1e36;
+    --navy-mid: #162844;
+    --navy-light: #1e3a5f;
+    --accent: #3b9eff;
+    --accent-glow: rgba(59,158,255,0.18);
+    --event: #f59e0b;
+    --event-glow: rgba(245,158,11,0.18);
+    --green: #22c55e;
+    --white: #f0f4fa;
+    --muted: #8096b4;
+    --border: rgba(59,158,255,0.15);
+    --panel: rgba(15,30,54,0.92);
+  }
+
+  html, body { height: 100%; font-family: 'DM Sans', sans-serif; background: var(--navy); color: var(--white); overflow: hidden; }
+
+  /* ── HEADER ── */
+  #header {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    height: 56px;
+    background: var(--navy);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 20px; gap: 16px;
+  }
+  #header .logo {
+    font-family: 'DM Mono', monospace;
+    font-size: 13px; font-weight: 500; letter-spacing: 0.12em;
+    color: var(--accent); text-transform: uppercase; white-space: nowrap;
+  }
+  #header .divider { width: 1px; height: 24px; background: var(--border); }
+  #header .title { font-size: 14px; font-weight: 500; color: var(--white); opacity: 0.85; }
+  #header .spacer { flex: 1; }
+  #header .stat {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  #header .stat strong { color: var(--white); font-weight: 600; }
+  #header .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  #header .dot.event { background: var(--event); box-shadow: 0 0 6px var(--event); }
+
+  /* ── MAP ── */
+  #map { position: fixed; top: 56px; left: 0; right: 0; bottom: 0; z-index: 1; }
+
+  /* ── SIDEBAR ── */
+  #sidebar {
+    position: fixed; top: 56px; right: 0; bottom: 0; width: 300px; z-index: 500;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    backdrop-filter: blur(12px);
+    transform: translateX(0);
+    transition: transform 0.3s ease;
+  }
+  #sidebar.hidden { transform: translateX(100%); }
+
+  #sidebar-toggle {
+    position: fixed; right: 308px; top: 72px; z-index: 600;
+    background: var(--navy-mid); border: 1px solid var(--border);
+    color: var(--accent); width: 28px; height: 56px;
+    border-radius: 6px 0 0 6px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; transition: all 0.3s ease;
+  }
+  #sidebar-toggle:hover { background: var(--navy-light); }
+  #sidebar-toggle.hidden { right: 8px; border-radius: 6px; }
+
+  .sidebar-section { padding: 16px; border-bottom: 1px solid var(--border); }
+  .sidebar-section h3 {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+  }
+
+  /* Layer toggles */
+  .layer-toggle {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 6px; margin-bottom: 6px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    cursor: pointer; transition: background 0.15s;
+  }
+  .layer-toggle:hover { background: rgba(255,255,255,0.08); }
+  .layer-info { display: flex; align-items: center; gap: 10px; }
+  .layer-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .layer-dot.clients { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+  .layer-dot.events { background: var(--event); box-shadow: 0 0 6px var(--event); }
+  .layer-label { font-size: 13px; font-weight: 500; }
+  .layer-count { font-size: 11px; color: var(--muted); }
+  .toggle-switch {
+    width: 36px; height: 20px; border-radius: 10px;
+    background: var(--accent); position: relative; transition: background 0.2s; flex-shrink: 0;
+  }
+  .toggle-switch.off { background: rgba(255,255,255,0.12); }
+  .toggle-switch::after {
+    content: ''; position: absolute; top: 3px; left: 3px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: white; transition: transform 0.2s;
+  }
+  .toggle-switch.off::after { transform: none; }
+  .toggle-switch:not(.off)::after { transform: translateX(16px); }
+
+  /* Label toggle */
+  .label-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+    cursor: pointer;
+  }
+  .label-toggle-row span { font-size: 12px; color: var(--muted); }
+
+  /* Search */
+  #search {
+    width: 100%; background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 12px; color: var(--white);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none;
+    transition: border-color 0.15s;
+  }
+  #search::placeholder { color: var(--muted); }
+  #search:focus { border-color: var(--accent); }
+
+  /* Account list */
+  #account-list { flex: 1; overflow-y: auto; padding: 8px; }
+  #account-list::-webkit-scrollbar { width: 4px; }
+  #account-list::-webkit-scrollbar-track { background: transparent; }
+  #account-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .account-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 6px; cursor: pointer;
+    transition: background 0.12s; margin-bottom: 2px;
+  }
+  .account-item:hover { background: rgba(59,158,255,0.1); }
+  .account-item .ai-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .account-item .ai-name { font-size: 12px; font-weight: 500; flex: 1; }
+  .account-item .ai-loc { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+  /* Add event panel */
+  #add-event-panel {
+    position: fixed; bottom: 24px; left: 24px; z-index: 600;
+    background: var(--panel); border: 1px solid rgba(245,158,11,0.3);
+    border-radius: 10px; padding: 16px; width: 280px;
+    backdrop-filter: blur(12px);
+    display: none;
+  }
+  #add-event-panel h4 { font-size: 12px; font-weight: 600; color: var(--event); margin-bottom: 12px; letter-spacing: 0.05em; text-transform: uppercase; }
+  #add-event-panel input, #add-event-panel select {
+    width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(245,158,11,0.25);
+    border-radius: 6px; padding: 7px 10px; color: var(--white);
+    font-family: 'DM Sans', sans-serif; font-size: 12px; outline: none; margin-bottom: 8px;
+  }
+  #add-event-panel input::placeholder { color: var(--muted); }
+  .event-btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .btn-primary {
+    flex: 1; background: var(--event); color: #0f1e36; border: none;
+    border-radius: 6px; padding: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn-primary:hover { opacity: 0.85; }
+  .btn-secondary {
+    flex: 1; background: transparent; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px; font-family: 'DM Sans', sans-serif;
+    font-size: 12px; cursor: pointer; transition: all 0.15s;
+  }
+  .btn-secondary:hover { color: var(--white); border-color: var(--muted); }
+
+  /* FAB - Add Event */
+  #fab {
+    position: fixed; bottom: 24px; left: 24px; z-index: 700;
+    background: var(--event); color: #0f1e36;
+    border: none; border-radius: 28px; padding: 10px 18px;
+    font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500;
+    letter-spacing: 0.06em; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 4px 20px rgba(245,158,11,0.35);
+    transition: all 0.2s;
+  }
+  #fab:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(245,158,11,0.45); }
+  #fab svg { width: 14px; height: 14px; }
+
+  /* Popup */
+  .leaflet-popup-content-wrapper {
+    background: var(--navy-mid) !important; border: 1px solid var(--border) !important;
+    border-radius: 8px !important; box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important; padding: 0 !important;
+  }
+  .leaflet-popup-content { margin: 0 !important; }
+  .leaflet-popup-tip { background: var(--navy-mid) !important; }
+  .leaflet-popup-close-button { color: var(--muted) !important; top: 8px !important; right: 8px !important; }
+
+  .popup-inner { padding: 14px 16px; min-width: 180px; }
+  .popup-type { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+  .popup-type.client { color: var(--accent); }
+  .popup-type.event { color: var(--event); }
+  .popup-name { font-size: 14px; font-weight: 600; color: var(--white); margin-bottom: 4px; }
+  .popup-loc { font-size: 12px; color: var(--muted); }
+
+  /* Leaflet label */
+  .map-label {
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    font-family: 'DM Sans', sans-serif; font-size: 11px; font-weight: 500;
+    color: var(--white); white-space: nowrap;
+    text-shadow: 0 1px 3px #000, 0 0 8px rgba(0,0,0,0.9), 0 1px 0 #000;
+    pointer-events: none;
+  }
+  .map-label.event-label { color: var(--event); }
+
+  .leaflet-container { background: #0a1628 !important; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <div class="logo">Simbe</div>
+  <div class="divider"></div>
+  <div class="title">Client HQ Map</div>
+  <div class="spacer"></div>
+  <div class="stat"><div class="dot"></div> <strong id="client-count">32</strong> Clients</div>
+  <div style="width:16px"></div>
+  <div class="stat"><div class="dot event"></div> <strong id="event-count">0</strong> Events</div>
+</div>
+
+<!-- Map -->
+<div id="map"></div>
+
+<!-- Sidebar toggle -->
+<button id="sidebar-toggle" onclick="toggleSidebar()">&#9656;</button>
+
+<!-- Sidebar -->
+<div id="sidebar">
+  <div class="sidebar-section">
+    <h3>Layers</h3>
+    <div class="layer-toggle" onclick="toggleLayer('clients')">
+      <div class="layer-info">
+        <div class="layer-dot clients"></div>
+        <div>
+          <div class="layer-label">Client HQs</div>
+          <div class="layer-count">32 accounts</div>
+        </div>
+      </div>
+      <div class="toggle-switch" id="toggle-clients"></div>
+    </div>
+    <div class="layer-toggle" onclick="toggleLayer('events')">
+      <div class="layer-info">
+        <div class="layer-dot events"></div>
+        <div>
+          <div class="layer-label">Events</div>
+          <div class="layer-count" id="event-layer-count">0 added</div>
+        </div>
+      </div>
+      <div class="toggle-switch" id="toggle-events"></div>
+    </div>
+    <div style="margin-top:8px">
+      <div class="label-toggle-row" onclick="toggleLabels()">
+        <span>Show name labels</span>
+        <div class="toggle-switch" id="toggle-labels"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar-section">
+    <h3>Search Accounts</h3>
+    <input id="search" type="text" placeholder="Filter accounts..." oninput="filterList(this.value)">
+  </div>
+
+  <div id="account-list"></div>
+</div>
+
+<!-- Add Event FAB -->
+<button id="fab" onclick="showAddEvent()">
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/></svg>
+  ADD EVENT
+</button>
+
+<!-- Add Event Panel -->
+<div id="add-event-panel">
+  <h4>+ Add Event / POI</h4>
+  <input type="text" id="ev-name" placeholder="Event name (e.g. NRF 2026)">
+  <input type="text" id="ev-city" placeholder="City, Country">
+  <select id="ev-type">
+    <option value="conference">Conference / Trade Show</option>
+    <option value="meeting">Client Meeting</option>
+    <option value="office">Office / Team Location</option>
+    <option value="prospect">Prospect</option>
+    <option value="other">Other</option>
+  </select>
+  <div class="event-btn-row">
+    <button class="btn-primary" onclick="addEvent()">Add to Map</button>
+    <button class="btn-secondary" onclick="hideAddEvent()">Cancel</button>
+  </div>
+</div>
+
+<script>
+// ── DATA ──
+const clients = [
+  { name: "99 Ranch Market",           city: "Buena Park, CA",        country: "USA",      lat: 33.8697,  lng: -118.0209 },
+  { name: "Albertsons Companies",      city: "Boise, ID",             country: "USA",      lat: 43.5993,  lng: -116.1804 },
+  { name: "Ball's Food Stores",        city: "Kansas City, KS",       country: "USA",      lat: 39.0952,  lng: -94.7010  },
+  { name: "BJ's Wholesale Club",       city: "Marlborough, MA",       country: "USA",      lat: 42.3256,  lng: -71.5841  },
+  { name: "Bristol Farms",             city: "Carson, CA",            country: "USA",      lat: 33.8176,  lng: -118.2583 },
+  { name: "Buchheit",                  city: "Perryville, MO",        country: "USA",      lat: 37.6046,  lng: -89.8404  },
+  { name: "B&R Stores",                city: "Lincoln, NE",           country: "USA",      lat: 40.8227,  lng: -96.6559  },
+  { name: "Country Supplier",          city: "Ammon, ID",             country: "USA",      lat: 43.4885,  lng: -111.9789 },
+  { name: "DeCicco & Sons",            city: "Ardsley, NY",           country: "USA",      lat: 41.0124,  lng: -73.8453  },
+  { name: "Detwiler's Farm Market",    city: "Palmetto, FL",          country: "USA",      lat: 27.5299,  lng: -82.5132  },
+  { name: "E.Leclerc",                 city: "Ivry-sur-Seine",        country: "France",   lat: 48.8223,  lng: 2.3906    },
+  { name: "Giant Eagle",               city: "Cranberry Township, PA",country: "USA",      lat: 40.6750,  lng: -80.0919  },
+  { name: "Harmons Grocery",           city: "West Valley City, UT",  country: "USA",      lat: 40.6963,  lng: -111.9874 },
+  { name: "Kaufland",                  city: "Neckarsulm",            country: "Germany",  lat: 49.1836,  lng: 9.2374    },
+  { name: "Kroger Company",            city: "Cincinnati, OH",        country: "USA",      lat: 39.1068,  lng: -84.5142  },
+  { name: "Leroy Merlin France",       city: "Lezennes",              country: "France",   lat: 50.6112,  lng: 3.1186    },
+  { name: "Leroy Merlin Portugal",     city: "Lisbon",                country: "Portugal", lat: 38.7874,  lng: -9.1493   },
+  { name: "Lowe's Companies",          city: "Mooresville, NC",       country: "USA",      lat: 35.5424,  lng: -80.8533  },
+  { name: "McCaffrey's Food Markets",  city: "Langhorne, PA",         country: "USA",      lat: 40.1922,  lng: -74.8726  },
+  { name: "McLiney Lumber & Supply",   city: "Lebanon, MO",           country: "USA",      lat: 37.6806,  lng: -92.6638  },
+  { name: "Metro Inc Canada",          city: "Montreal, QC",          country: "Canada",   lat: 45.6664,  lng: -73.5314  },
+  { name: "Mills Fleet Farm",          city: "Appleton, WI",          country: "USA",      lat: 44.2384,  lng: -88.4221  },
+  { name: "Musgrave",                  city: "Cork",                  country: "Ireland",  lat: 51.8676,  lng: -8.4754   },
+  { name: "Orgill Inc",                city: "Collierville, TN",      country: "USA",      lat: 35.0368,  lng: -89.7307  },
+  { name: "Schnuck Markets",           city: "St. Louis, MO",         country: "USA",      lat: 38.6965,  lng: -90.4168  },
+  { name: "Spar Austria",              city: "Salzburg",              country: "Austria",  lat: 47.8159,  lng: 13.0046   },
+  { name: "Stater Brothers Markets",   city: "Yucaipa, CA",           country: "USA",      lat: 34.0351,  lng: -117.0527 },
+  { name: "Tesco",                     city: "Welwyn Garden City",    country: "UK",       lat: 51.8086,  lng: -0.1946   },
+  { name: "Tractor Supply",            city: "Brentwood, TN",         country: "USA",      lat: 36.0324,  lng: -86.8128  },
+  { name: "Wakefern",                  city: "Keasbey, NJ",           country: "USA",      lat: 40.5097,  lng: -74.3279  },
+  { name: "Walmart US",                city: "Bentonville, AR",       country: "USA",      lat: 36.3636,  lng: -94.1921  },
+  { name: "Whole Foods",               city: "Austin, TX",            country: "USA",      lat: 30.2708,  lng: -97.7529  },
+];
+
+// ── MAP INIT ──
+const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([30, -30], 3);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 19
+}).addTo(map);
+
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+// ── STATE ──
+const state = { clientsOn: true, eventsOn: true, labelsOn: true };
+const clientMarkers = [];
+const clientLabels = [];
+const eventMarkers = [];
+const eventLabels = [];
+const events = [];
+
+// ── ICONS ──
+function makeClientIcon() {
+  return L.divIcon({
+    html: `<svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" fill="#3b9eff" stroke="#0f1e36" stroke-width="2"/><circle cx="7" cy="7" r="2" fill="white"/></svg>`,
+    className: '', iconAnchor: [7,7], iconSize: [14,14]
+  });
+}
+
+function makeEventIcon() {
+  return L.divIcon({
+    html: `<svg width="22" height="28" viewBox="0 0 22 28"><path d="M11 0C5 0 0 5 0 11c0 8 11 17 11 17s11-9 11-17C22 5 17 0 11 0z" fill="#f59e0b"/><circle cx="11" cy="11" r="4" fill="#0f1e36"/></svg>`,
+    className: '', iconAnchor: [11,28], iconSize: [22,28]
+  });
+}
+
+// ── RENDER CLIENTS ──
+clients.forEach((c, i) => {
+  const marker = L.marker([c.lat, c.lng], { icon: makeClientIcon() })
+    .bindPopup(`<div class="popup-inner"><div class="popup-type client">Client HQ</div><div class="popup-name">${c.name}</div><div class="popup-loc">${c.city} &bull; ${c.country}</div></div>`, { maxWidth: 240 })
+    .addTo(map);
+
+  const label = L.marker([c.lat, c.lng], {
+    icon: L.divIcon({ html: `<div class="map-label">${c.name}</div>`, className: '', iconAnchor: [-10, 6] }),
+    interactive: false, zIndexOffset: -100
+  }).addTo(map);
+
+  clientMarkers.push(marker);
+  clientLabels.push(label);
+});
+
+// ── LAYER TOGGLES ──
+function toggleLayer(layer) {
+  if (layer === 'clients') {
+    state.clientsOn = !state.clientsOn;
+    clientMarkers.forEach(m => state.clientsOn ? map.addLayer(m) : map.removeLayer(m));
+    if (state.labelsOn) clientLabels.forEach(l => state.clientsOn ? map.addLayer(l) : map.removeLayer(l));
+    document.getElementById('toggle-clients').classList.toggle('off', !state.clientsOn);
+  } else if (layer === 'events') {
+    state.eventsOn = !state.eventsOn;
+    eventMarkers.forEach(m => state.eventsOn ? map.addLayer(m) : map.removeLayer(m));
+    if (state.labelsOn) eventLabels.forEach(l => state.eventsOn ? map.addLayer(l) : map.removeLayer(l));
+    document.getElementById('toggle-events').classList.toggle('off', !state.eventsOn);
+  }
+}
+
+function toggleLabels() {
+  state.labelsOn = !state.labelsOn;
+  document.getElementById('toggle-labels').classList.toggle('off', !state.labelsOn);
+  clientLabels.forEach(l => {
+    if (state.labelsOn && state.clientsOn) map.addLayer(l);
+    else map.removeLayer(l);
+  });
+  eventLabels.forEach(l => {
+    if (state.labelsOn && state.eventsOn) map.addLayer(l);
+    else map.removeLayer(l);
+  });
+}
+
+// ── SIDEBAR ──
+let sidebarOpen = true;
+function toggleSidebar() {
+  sidebarOpen = !sidebarOpen;
+  document.getElementById('sidebar').classList.toggle('hidden', !sidebarOpen);
+  const btn = document.getElementById('sidebar-toggle');
+  btn.classList.toggle('hidden', !sidebarOpen);
+  btn.innerHTML = sidebarOpen ? '&#9656;' : '&#9666;';
+  btn.style.right = sidebarOpen ? '308px' : '8px';
+}
+
+// ── ACCOUNT LIST ──
+function buildList(filter) {
+  const list = document.getElementById('account-list');
+  list.innerHTML = '';
+  clients
+    .filter(c => !filter || c.name.toLowerCase().includes(filter.toLowerCase()) || c.city.toLowerCase().includes(filter.toLowerCase()))
+    .forEach((c, i) => {
+      const div = document.createElement('div');
+      div.className = 'account-item';
+      div.innerHTML = `<div class="ai-dot" style="background:#3b9eff"></div><div class="ai-name">${c.name}</div><div class="ai-loc">${c.country}</div>`;
+      div.onclick = () => { map.flyTo([c.lat, c.lng], 8, { duration: 1.2 }); clientMarkers[clients.indexOf(c)].openPopup(); };
+      list.appendChild(div);
+    });
+}
+function filterList(v) { buildList(v); }
+buildList();
+
+// ── ADD EVENT ──
+function showAddEvent() {
+  document.getElementById('add-event-panel').style.display = 'block';
+  document.getElementById('fab').style.display = 'none';
+}
+function hideAddEvent() {
+  document.getElementById('add-event-panel').style.display = 'none';
+  document.getElementById('fab').style.display = 'flex';
+  document.getElementById('ev-name').value = '';
+  document.getElementById('ev-city').value = '';
+}
+
+async function addEvent() {
+  const name = document.getElementById('ev-name').value.trim();
+  const city = document.getElementById('ev-city').value.trim();
+  const type = document.getElementById('ev-type').value;
+  if (!name || !city) { alert('Please enter a name and city.'); return; }
+
+  // Geocode via Nominatim
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(city)}&format=json&limit=1`);
+    const data = await res.json();
+    if (!data.length) { alert('Location not found. Try a different city name.'); return; }
+    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+
+    const marker = L.marker([lat, lng], { icon: makeEventIcon() })
+      .bindPopup(`<div class="popup-inner"><div class="popup-type event">${type.replace(/-/g,' ').toUpperCase()}</div><div class="popup-name">${name}</div><div class="popup-loc">${city}</div></div>`, { maxWidth: 240 });
+
+    const label = L.marker([lat, lng], {
+      icon: L.divIcon({ html: `<div class="map-label event-label">${name}</div>`, className: '', iconAnchor: [-14, 20] }),
+      interactive: false, zIndexOffset: -100
+    });
+
+    if (state.eventsOn) { map.addLayer(marker); if (state.labelsOn) map.addLayer(label); }
+    eventMarkers.push(marker); eventLabels.push(label); events.push({ name, city, type });
+
+    const count = events.length;
+    document.getElementById('event-count').textContent = count;
+    document.getElementById('event-layer-count').textContent = `${count} added`;
+
+    // Add to sidebar list
+    const list = document.getElementById('account-list');
+    const div = document.createElement('div');
+    div.className = 'account-item';
+    div.innerHTML = `<div class="ai-dot" style="background:#f59e0b"></div><div class="ai-name">${name}</div><div class="ai-loc">${city}</div>`;
+    div.onclick = () => { map.flyTo([lat, lng], 8, { duration: 1.2 }); marker.openPopup(); };
+    list.prepend(div);
+
+    map.flyTo([lat, lng], 6, { duration: 1.5 });
+    hideAddEvent();
+  } catch(e) {
+    alert('Could not geocode location. Check your connection and try again.');
+  }
+}
+</script>
+</body>
+</html>
